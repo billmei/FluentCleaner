@@ -13,6 +13,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
     case browserData = "Browser data"
     case privacyTraces = "Privacy traces"
     case recentFileLists = "Recent file lists"
+    case uninstalledAppTraces = "Uninstalled app traces"
 
     public var id: Self { self }
 
@@ -20,7 +21,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .temporaryFiles: return 7
         case .applicationCaches, .diagnosticReports: return 30
-        case .browserData, .privacyTraces, .recentFileLists: return nil
+        case .browserData, .privacyTraces, .recentFileLists, .uninstalledAppTraces: return nil
         }
     }
 
@@ -37,6 +38,8 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
             return "Download history, QuickLook thumbnails, saved window state, and HTTP cookies"
         case .recentFileLists:
             return "Recently opened documents, apps, and servers"
+        case .uninstalledAppTraces:
+            return "Leftover preferences, caches, and support files from removed apps"
         }
     }
 
@@ -49,6 +52,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
         case .browserData: return 10
         case .recentFileLists: return 20
         case .privacyTraces: return 30
+        case .uninstalledAppTraces: return 40
         case .temporaryFiles: return 50
         case .applicationCaches: return 60
         case .diagnosticReports: return 70
@@ -163,7 +167,7 @@ public struct Cleaner: Sendable {
     #if os(macOS)
     public init() {
         let homePath = trimTrailingSlashes(FileManager.default.homeDirectoryForCurrentUser.path)
-        var targets: [CleanupTarget] = [
+        var staticTargets: [CleanupTarget] = [
             CleanupTarget(
                 category: .temporaryFiles,
                 rootPath: Self.userTemporaryDirectory(),
@@ -181,13 +185,31 @@ public struct Cleaner: Sendable {
                 minimumAgeInDays: CleanupCategory.diagnosticReports.minimumAgeInDays
             ),
         ]
-        targets.append(contentsOf: Self.browserDataTargets(homePath: homePath))
-        targets.append(contentsOf: Self.privacyTraceTargets(
+        staticTargets.append(contentsOf: Self.browserDataTargets(homePath: homePath))
+        staticTargets.append(contentsOf: Self.privacyTraceTargets(
             homePath: homePath,
             userCacheDirectory: Self.userCacheDirectory()
         ))
-        targets.append(contentsOf: Self.recentFileListTargets(homePath: homePath))
-        self.init(targets: targets)
+        staticTargets.append(contentsOf: Self.recentFileListTargets(homePath: homePath))
+
+        var byCategory: [CleanupCategory: [CleanupTarget]] = [:]
+        var allowed: [CleanupCategory: Set<String>] = [:]
+        for target in staticTargets {
+            byCategory[target.category, default: []].append(target)
+            if let rootPath = target.rootPath {
+                allowed[target.category, default: []].insert(rootPath)
+            }
+        }
+        allowed[.uninstalledAppTraces] = Set(Self.uninstalledAppTraceRootPaths(homePath: homePath))
+
+        let grouped = byCategory
+        let discoveryPaths = AppDiscoveryPaths.macOSDefaults(homePath: homePath)
+        self.init(allowedRoots: allowed, targetResolver: { category in
+            if category == .uninstalledAppTraces {
+                return Self.resolveUninstalledAppTraceTargets(homePath: homePath, discoveryPaths: discoveryPaths)
+            }
+            return TargetResolution(targets: grouped[category] ?? [])
+        })
     }
 
     static func userTemporaryDirectory() -> String? {
