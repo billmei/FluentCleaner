@@ -1,6 +1,6 @@
 # FluentCleaner for macOS
 
-FluentCleaner previews old temporary files, app caches, diagnostic reports, and browser data from your macOS user account. It requires macOS 13 or later and runs on both Apple silicon and Intel Macs.
+FluentCleaner previews old temporary files, app caches, diagnostic reports, browser data, and privacy traces from your macOS user account. It requires macOS 13 or later and runs on both Apple silicon and Intel Macs.
 
 ## Build and run
 
@@ -25,6 +25,7 @@ Run the cleanup engine tests with `swift test`.
 | `~/Library/Caches` | Files last modified over 30 days ago | No |
 | `~/Library/Logs/DiagnosticReports` | Files last modified over 30 days ago | No |
 | Browser data (Safari, Chrome, Brave, Edge, Arc, Vivaldi, Opera, Firefox) | History, cookies, sessions, caches, and website storage (preserves bookmarks, passwords, and extensions) | No |
+| Privacy traces (`QuarantineEventsV2`, QuickLook thumbnail cache, `~/Library/Saved Application State`, HSTS & `~/Library/HTTPStorages`) | Download history, cached document previews, saved window state, and app HTTP cookies | No |
 
 FluentCleaner scans regular files owned by your account and skips symbolic links, hard links, and other volumes beneath the scan root. It preserves the directories themselves. Sizes in the preview describe the files’ logical sizes. Close browsers and other apps before cleaning their data, and grant FluentCleaner Full Disk Access in System Settings if you want it to scan protected locations like `~/Library/Safari`.
 

@@ -11,6 +11,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
     case applicationCaches = "App caches"
     case diagnosticReports = "Diagnostic reports"
     case browserData = "Browser data"
+    case privacyTraces = "Privacy traces"
 
     public var id: Self { self }
 
@@ -18,7 +19,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .temporaryFiles: return 7
         case .applicationCaches, .diagnosticReports: return 30
-        case .browserData: return nil
+        case .browserData, .privacyTraces: return nil
         }
     }
 
@@ -31,6 +32,8 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
             return ""
         case .browserData:
             return "History, cookies, sessions, caches, and site storage"
+        case .privacyTraces:
+            return "Download history, QuickLook thumbnails, saved window state, and HTTP cookies"
         }
     }
 
@@ -41,6 +44,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
     var scanPriority: Int {
         switch self {
         case .browserData: return 10
+        case .privacyTraces: return 30
         case .temporaryFiles: return 50
         case .applicationCaches: return 60
         case .diagnosticReports: return 70
@@ -174,11 +178,19 @@ public struct Cleaner: Sendable {
             ),
         ]
         targets.append(contentsOf: Self.browserDataTargets(homePath: homePath))
+        targets.append(contentsOf: Self.privacyTraceTargets(
+            homePath: homePath,
+            userCacheDirectory: Self.userCacheDirectory()
+        ))
         self.init(targets: targets)
     }
 
     static func userTemporaryDirectory() -> String? {
         userDarwinDirectory(Int32(_CS_DARWIN_USER_TEMP_DIR), expectedLeaf: "T")
+    }
+
+    static func userCacheDirectory() -> String? {
+        userDarwinDirectory(Int32(_CS_DARWIN_USER_CACHE_DIR), expectedLeaf: "C")
     }
 
     static func userDarwinDirectory(_ key: Int32, expectedLeaf: String) -> String? {
