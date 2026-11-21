@@ -135,6 +135,71 @@ final class CleanerTests: XCTestCase {
         XCTAssertTrue(manager.fileExists(atPath: file.path))
     }
 
+    func testMultiTargetRulesSupportOptionalAgePredicatesDepthAndDeduplication() throws {
+        let extraRoot = workspace.appendingPathComponent("extra")
+        let missingRoot = workspace.appendingPathComponent("does-not-exist")
+        try manager.createDirectory(at: extraRoot, withIntermediateDirectories: true)
+
+        let freshMatched = try writeFile("keep-me.dat", under: temporary, age: 0)
+        let freshSkipped = try writeFile("ignore-me.txt", under: temporary, age: 0)
+        let deepSkipped = try writeFile("nested/deep.dat", under: temporary, age: 0)
+        let overlapFile = try writeFile("shared.dat", under: extraRoot, age: 40)
+
+        let multiCleaner = Cleaner(targets: [
+            CleanupTarget(
+                category: .temporaryFiles,
+                rootPath: temporary.path,
+                minimumAgeInDays: nil,
+                maxDepth: 1,
+                shouldDescend: { _ in false },
+                shouldIncludeFile: { $0.last?.hasSuffix(".dat") == true }
+            ),
+            CleanupTarget(
+                category: .temporaryFiles,
+                rootPath: extraRoot.path,
+                minimumAgeInDays: nil
+            ),
+            CleanupTarget(
+                category: .temporaryFiles,
+                rootPath: missingRoot.path,
+                minimumAgeInDays: nil
+            ),
+            CleanupTarget(
+                category: .applicationCaches,
+                rootPath: extraRoot.path,
+                minimumAgeInDays: 30
+            ),
+        ])
+
+        let plan = multiCleaner.scan([.temporaryFiles, .applicationCaches], now: now)
+        XCTAssertEqual(plan.unreadableLocations, 0)
+        XCTAssertEqual(Set(plan.files.map(\.path)), [freshMatched.path, overlapFile.path])
+        XCTAssertEqual(plan.bytes, 8)
+        let overlapEntry = try XCTUnwrap(plan.files.first { $0.path == overlapFile.path })
+        XCTAssertEqual(overlapEntry.category, .temporaryFiles)
+
+        let report = multiCleaner.clean(plan)
+        XCTAssertEqual(report.deleted, 2)
+        XCTAssertEqual(report.skipped, 0)
+        XCTAssertFalse(manager.fileExists(atPath: freshMatched.path))
+        XCTAssertFalse(manager.fileExists(atPath: overlapFile.path))
+        XCTAssertTrue(manager.fileExists(atPath: freshSkipped.path))
+        XCTAssertTrue(manager.fileExists(atPath: deepSkipped.path))
+    }
+
+    func testCleanupRejectsPlanFromDifferentCleanerRoots() throws {
+        let otherRoot = workspace.appendingPathComponent("other")
+        let file = try writeFile("item.tmp", under: otherRoot, age: 10)
+        let otherCleaner = Cleaner(roots: [.temporaryFiles: otherRoot.path])
+        let plan = otherCleaner.scan([.temporaryFiles], now: now)
+        XCTAssertEqual(plan.files.count, 1)
+
+        let report = cleaner.clean(plan)
+        XCTAssertEqual(report.deleted, 0)
+        XCTAssertEqual(report.skipped, 1)
+        XCTAssertTrue(manager.fileExists(atPath: file.path))
+    }
+
     @discardableResult
     private func writeFile(_ path: String, under directory: URL, age: Int) throws -> URL {
         let file = directory.appendingPathComponent(path)

@@ -13,10 +13,29 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
 
     public var id: Self { self }
 
-    public var minimumAgeInDays: Int {
+    public var minimumAgeInDays: Int? {
         switch self {
         case .temporaryFiles: return 7
         case .applicationCaches, .diagnosticReports: return 30
+        }
+    }
+
+    public var summary: String {
+        if let days = minimumAgeInDays {
+            return "Last modified over \(days) days ago"
+        }
+        return ""
+    }
+
+    public var isSelectedByDefault: Bool {
+        self == .temporaryFiles
+    }
+
+    var scanPriority: Int {
+        switch self {
+        case .temporaryFiles: return 50
+        case .applicationCaches: return 60
+        case .diagnosticReports: return 70
         }
     }
 }
@@ -28,6 +47,7 @@ public struct CleanupFile: Identifiable, Sendable {
     public let bytes: Int64
 
     fileprivate let rootPath: String
+    fileprivate let rootIdentity: FileIdentity
     fileprivate let relativePath: [String]
     fileprivate let fingerprint: FileFingerprint
 }
@@ -36,8 +56,6 @@ public struct CleanupPlan: Sendable {
     public let files: [CleanupFile]
     public let unreadableLocations: Int
     public let bytes: Int64
-
-    fileprivate let rootIdentities: [String: FileIdentity]
 }
 
 public struct CleanupReport: Sendable {
@@ -46,28 +64,115 @@ public struct CleanupReport: Sendable {
     public fileprivate(set) var deletedBytes: Int64 = 0
 }
 
+struct CleanupTarget: Sendable {
+    let category: CleanupCategory
+    let rootPath: String?
+    let minimumAgeInDays: Int?
+    let missingRootIsUnreadable: Bool
+    let maxDepth: Int?
+    let shouldDescend: @Sendable ([String]) -> Bool
+    let shouldIncludeFile: @Sendable ([String]) -> Bool
+
+    init(
+        category: CleanupCategory,
+        rootPath: String?,
+        minimumAgeInDays: Int? = nil,
+        missingRootIsUnreadable: Bool = false,
+        maxDepth: Int? = nil,
+        shouldDescend: @escaping @Sendable ([String]) -> Bool = { _ in true },
+        shouldIncludeFile: @escaping @Sendable ([String]) -> Bool = { _ in true }
+    ) {
+        self.category = category
+        self.rootPath = rootPath.map(trimTrailingSlashes)
+        self.minimumAgeInDays = minimumAgeInDays
+        self.missingRootIsUnreadable = missingRootIsUnreadable
+        self.maxDepth = maxDepth
+        self.shouldDescend = shouldDescend
+        self.shouldIncludeFile = shouldIncludeFile
+    }
+}
+
+struct TargetResolution: Sendable {
+    let targets: [CleanupTarget]
+    let unreadableLocations: Int
+
+    init(targets: [CleanupTarget], unreadableLocations: Int = 0) {
+        self.targets = targets
+        self.unreadableLocations = unreadableLocations
+    }
+}
+
 public struct Cleaner: Sendable {
-    private let roots: [CleanupCategory: String]
+    private let allowedRoots: [CleanupCategory: Set<String>]
+    private let targetResolver: @Sendable (CleanupCategory) -> TargetResolution
     private let owner: uid_t
 
     init(roots: [CleanupCategory: String], owner: uid_t = geteuid()) {
-        self.roots = roots
+        let targets = CleanupCategory.allCases.map { category in
+            CleanupTarget(
+                category: category,
+                rootPath: roots[category],
+                minimumAgeInDays: category.minimumAgeInDays,
+                missingRootIsUnreadable: true
+            )
+        }
+        self.init(targets: targets, owner: owner)
+    }
+
+    init(targets: [CleanupTarget], owner: uid_t = geteuid()) {
+        var byCategory: [CleanupCategory: [CleanupTarget]] = [:]
+        var allowed: [CleanupCategory: Set<String>] = [:]
+        for target in targets {
+            byCategory[target.category, default: []].append(target)
+            if let rootPath = target.rootPath {
+                allowed[target.category, default: []].insert(rootPath)
+            }
+        }
+        let grouped = byCategory
+        self.init(allowedRoots: allowed, targetResolver: { category in
+            TargetResolution(targets: grouped[category] ?? [])
+        }, owner: owner)
+    }
+
+    init(
+        allowedRoots: [CleanupCategory: Set<String>],
+        targetResolver: @escaping @Sendable (CleanupCategory) -> TargetResolution,
+        owner: uid_t = geteuid()
+    ) {
+        self.allowedRoots = allowedRoots.mapValues { Set($0.map(trimTrailingSlashes)) }
+        self.targetResolver = targetResolver
         self.owner = owner
     }
 
     #if os(macOS)
     public init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        var roots: [CleanupCategory: String] = [
-            .applicationCaches: home.appendingPathComponent("Library/Caches").path,
-            .diagnosticReports: home.appendingPathComponent("Library/Logs/DiagnosticReports").path,
+        let targets: [CleanupTarget] = [
+            CleanupTarget(
+                category: .temporaryFiles,
+                rootPath: Self.userTemporaryDirectory(),
+                minimumAgeInDays: CleanupCategory.temporaryFiles.minimumAgeInDays,
+                missingRootIsUnreadable: true
+            ),
+            CleanupTarget(
+                category: .applicationCaches,
+                rootPath: home.appendingPathComponent("Library/Caches").path,
+                minimumAgeInDays: CleanupCategory.applicationCaches.minimumAgeInDays
+            ),
+            CleanupTarget(
+                category: .diagnosticReports,
+                rootPath: home.appendingPathComponent("Library/Logs/DiagnosticReports").path,
+                minimumAgeInDays: CleanupCategory.diagnosticReports.minimumAgeInDays
+            ),
         ]
-        roots[.temporaryFiles] = Self.userTemporaryDirectory()
-        self.init(roots: roots)
+        self.init(targets: targets)
     }
 
     static func userTemporaryDirectory() -> String? {
-        let key = Int32(_CS_DARWIN_USER_TEMP_DIR)
+        userDarwinDirectory(Int32(_CS_DARWIN_USER_TEMP_DIR), expectedLeaf: "T")
+    }
+
+    static func userDarwinDirectory(_ key: Int32, expectedLeaf: String) -> String? {
         let length = confstr(key, nil, 0)
         guard length > 0 else { return nil }
         var buffer = [CChar](repeating: 0, count: length)
@@ -78,51 +183,72 @@ public struct Cleaner: Sendable {
         let components = String(cString: buffer).split(separator: "/").map(String.init)
         let path = "/" + components.joined(separator: "/")
         let canonicalPath = path.hasPrefix("/var/folders/") ? "/private" + path : path
-        guard canonicalPath.hasPrefix("/private/var/folders/"), components.last == "T" else { return nil }
+        guard canonicalPath.hasPrefix("/private/var/folders/"), components.last == expectedLeaf else { return nil }
         return canonicalPath
     }
     #endif
 
     public func scan(_ categories: Set<CleanupCategory>, now: Date = Date()) -> CleanupPlan {
         var files: [CleanupFile] = []
-        var rootIdentities: [String: FileIdentity] = [:]
+        var seenIdentities: Set<FileIdentity> = []
         var unreadableLocations = 0
 
-        for category in CleanupCategory.allCases where categories.contains(category) {
-            guard let path = roots[category] else {
-                unreadableLocations += 1
-                continue
-            }
-            let root = openRoot(path)
-            guard root >= 0 else {
-                if errno != ENOENT { unreadableLocations += 1 }
-                continue
-            }
-            defer { close(root) }
+        let orderedCategories = CleanupCategory.allCases
+            .filter { categories.contains($0) }
+            .sorted { ($0.scanPriority, $0.rawValue) < ($1.scanPriority, $1.rawValue) }
 
-            var info = stat()
-            guard fstat(root, &info) == 0, info.st_uid == owner else {
-                unreadableLocations += 1
-                continue
-            }
+        for category in orderedCategories {
+            let resolution = targetResolver(category)
+            unreadableLocations += resolution.unreadableLocations
 
-            rootIdentities[path] = FileIdentity(info)
-            let cutoff = now.addingTimeInterval(-Double(category.minimumAgeInDays) * 86_400)
-            scanDirectory(root, rootPath: path, relativePath: [], category: category,
-                          device: info.st_dev, cutoff: cutoff, files: &files, unreadable: &unreadableLocations)
+            for target in resolution.targets {
+                guard let path = target.rootPath else {
+                    if target.missingRootIsUnreadable { unreadableLocations += 1 }
+                    continue
+                }
+                let root = openRoot(path)
+                guard root >= 0 else {
+                    if errno != ENOENT { unreadableLocations += 1 }
+                    continue
+                }
+                defer { close(root) }
+
+                var info = stat()
+                guard fstat(root, &info) == 0, info.st_uid == owner else {
+                    unreadableLocations += 1
+                    continue
+                }
+
+                let rootIdentity = FileIdentity(info)
+                let cutoff = target.minimumAgeInDays.map { now.addingTimeInterval(-Double($0) * 86_400) }
+                scanDirectory(
+                    root,
+                    target: target,
+                    rootPath: path,
+                    rootIdentity: rootIdentity,
+                    relativePath: [],
+                    device: info.st_dev,
+                    cutoff: cutoff,
+                    files: &files,
+                    seenIdentities: &seenIdentities,
+                    unreadable: &unreadableLocations
+                )
+            }
         }
         files.sort { $0.path < $1.path }
-        return CleanupPlan(files: files, unreadableLocations: unreadableLocations,
-                           bytes: files.reduce(0) { $0 + $1.bytes }, rootIdentities: rootIdentities)
+        return CleanupPlan(
+            files: files,
+            unreadableLocations: unreadableLocations,
+            bytes: files.reduce(0) { $0 + $1.bytes }
+        )
     }
 
     /// Apply the previously displayed plan after the user confirms it.
     public func clean(_ plan: CleanupPlan) -> CleanupReport {
         var report = CleanupReport()
         for file in plan.files {
-            guard roots[file.category] == file.rootPath,
-                  let rootIdentity = plan.rootIdentities[file.rootPath],
-                  deleteFile(file, rootIdentity: rootIdentity) else {
+            guard allowedRoots[file.category]?.contains(file.rootPath) == true,
+                  deleteFile(file) else {
                 report.skipped += 1
                 continue
             }
@@ -132,8 +258,18 @@ public struct Cleaner: Sendable {
         return report
     }
 
-    private func scanDirectory(_ fd: Int32, rootPath: String, relativePath: [String], category: CleanupCategory,
-                               device: dev_t, cutoff: Date, files: inout [CleanupFile], unreadable: inout Int) {
+    private func scanDirectory(
+        _ fd: Int32,
+        target: CleanupTarget,
+        rootPath: String,
+        rootIdentity: FileIdentity,
+        relativePath: [String],
+        device: dev_t,
+        cutoff: Date?,
+        files: inout [CleanupFile],
+        seenIdentities: inout Set<FileIdentity>,
+        unreadable: inout Int
+    ) {
         // fdopendir owns its descriptor. Keep the original for descriptor-relative lookups.
         let directoryFD = dup(fd)
         guard directoryFD >= 0 else {
@@ -170,6 +306,10 @@ public struct Cleaner: Sendable {
             let components = relativePath + [name]
             switch info.st_mode & mode_t(S_IFMT) {
             case mode_t(S_IFDIR):
+                if let maxDepth = target.maxDepth, components.count >= maxDepth {
+                    continue
+                }
+                guard target.shouldDescend(components) else { continue }
                 let child = openat(fd, name, directoryOpenFlags)
                 guard child >= 0 else {
                     unreadable += 1
@@ -182,34 +322,53 @@ public struct Cleaner: Sendable {
                     unreadable += 1
                     continue
                 }
-                scanDirectory(child, rootPath: rootPath, relativePath: components, category: category,
-                              device: device, cutoff: cutoff, files: &files, unreadable: &unreadable)
+                scanDirectory(
+                    child,
+                    target: target,
+                    rootPath: rootPath,
+                    rootIdentity: rootIdentity,
+                    relativePath: components,
+                    device: device,
+                    cutoff: cutoff,
+                    files: &files,
+                    seenIdentities: &seenIdentities,
+                    unreadable: &unreadable
+                )
             case mode_t(S_IFREG):
+                guard target.shouldIncludeFile(components) else { continue }
                 let fingerprint = FileFingerprint(info)
-                guard info.st_nlink == 1, fingerprint.modifiedDate < cutoff else { continue }
-                files.append(CleanupFile(path: rootPath + "/" + components.joined(separator: "/"),
-                                         category: category, bytes: Int64(info.st_size), rootPath: rootPath,
-                                         relativePath: components, fingerprint: fingerprint))
+                guard info.st_nlink == 1 else { continue }
+                if let cutoff, fingerprint.modifiedDate >= cutoff { continue }
+                guard seenIdentities.insert(fingerprint.identity).inserted else { continue }
+                files.append(CleanupFile(
+                    path: rootPath + "/" + components.joined(separator: "/"),
+                    category: target.category,
+                    bytes: Int64(info.st_size),
+                    rootPath: rootPath,
+                    rootIdentity: rootIdentity,
+                    relativePath: components,
+                    fingerprint: fingerprint
+                ))
             default:
                 continue
             }
         }
     }
 
-    private func deleteFile(_ file: CleanupFile, rootIdentity: FileIdentity) -> Bool {
+    private func deleteFile(_ file: CleanupFile) -> Bool {
         var fd = openRoot(file.rootPath)
         guard fd >= 0 else { return false }
         defer { close(fd) }
 
         var info = stat()
-        guard fstat(fd, &info) == 0, info.st_uid == owner, FileIdentity(info) == rootIdentity else { return false }
+        guard fstat(fd, &info) == 0, info.st_uid == owner, FileIdentity(info) == file.rootIdentity else { return false }
 
         for component in file.relativePath.dropLast() {
             let child = openat(fd, component, directoryOpenFlags)
             guard child >= 0 else { return false }
             close(fd)
             fd = child
-            guard fstat(fd, &info) == 0, info.st_dev == rootIdentity.device, info.st_uid == owner else { return false }
+            guard fstat(fd, &info) == 0, info.st_dev == file.rootIdentity.device, info.st_uid == owner else { return false }
         }
 
         guard let name = file.relativePath.last, fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0,
@@ -221,6 +380,14 @@ public struct Cleaner: Sendable {
 }
 
 private let directoryOpenFlags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+
+private func trimTrailingSlashes(_ path: String) -> String {
+    var result = path
+    while result.count > 1 && result.hasSuffix("/") {
+        result.removeLast()
+    }
+    return result
+}
 
 // Open every ancestor without following symlinks, including ones above the cleanup root.
 private func openRoot(_ path: String) -> Int32 {
@@ -246,7 +413,7 @@ private func openRoot(_ path: String) -> Int32 {
     return fd
 }
 
-private struct FileIdentity: Equatable, Sendable {
+private struct FileIdentity: Hashable, Sendable {
     let device: dev_t
     let inode: ino_t
 

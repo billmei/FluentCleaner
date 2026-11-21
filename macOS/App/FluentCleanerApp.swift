@@ -19,7 +19,9 @@ struct FluentCleanerApp: App {
 // is unavailable in standalone Command Line Tools.
 @MainActor
 private final class CleanerViewModel: ObservableObject {
-    @Published var selectedCategories: Set<CleanupCategory> = [.temporaryFiles]
+    @Published var selectedCategories: Set<CleanupCategory> = Set(
+        CleanupCategory.allCases.filter(\.isSelectedByDefault)
+    )
     @Published var plan: CleanupPlan?
     @Published var report: CleanupReport?
     @Published var work: Work?
@@ -98,26 +100,31 @@ private struct CleanerView: View {
     }
 
     private var locations: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Cleanup Locations")
                 .font(.headline)
 
-            ForEach(CleanupCategory.allCases) { category in
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle(category.rawValue, isOn: selection(for: category))
-                    Text("Last modified over \(category.minimumAgeInDays) days ago")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 20)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(CleanupCategory.allCases) { category in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle(category.rawValue, isOn: selection(for: category))
+                            Text(category.summary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, 20)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
 
-            Spacer()
             Button("Scan") { model.scan() }
                 .disabled(model.selectedCategories.isEmpty || model.work != nil)
         }
         .padding(20)
-        .frame(width: 233, alignment: .leading)
+        .frame(width: 260, alignment: .leading)
         .background(.regularMaterial)
         .disabled(model.work != nil)
     }
@@ -147,7 +154,7 @@ private struct CleanerView: View {
                     TableColumn("Category") { file in
                         Text(file.category.rawValue)
                     }
-                    .width(125)
+                    .width(150)
                     TableColumn("Size") { file in
                         Text(formatBytes(file.bytes))
                             .monospacedDigit()
