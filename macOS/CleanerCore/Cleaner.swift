@@ -10,6 +10,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
     case temporaryFiles = "Temporary files"
     case applicationCaches = "App caches"
     case diagnosticReports = "Diagnostic reports"
+    case browserData = "Browser data"
 
     public var id: Self { self }
 
@@ -17,14 +18,20 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .temporaryFiles: return 7
         case .applicationCaches, .diagnosticReports: return 30
+        case .browserData: return nil
         }
     }
 
     public var summary: String {
-        if let days = minimumAgeInDays {
-            return "Last modified over \(days) days ago"
+        switch self {
+        case .temporaryFiles, .applicationCaches, .diagnosticReports:
+            if let days = minimumAgeInDays {
+                return "Last modified over \(days) days ago"
+            }
+            return ""
+        case .browserData:
+            return "History, cookies, sessions, caches, and site storage"
         }
-        return ""
     }
 
     public var isSelectedByDefault: Bool {
@@ -33,6 +40,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
 
     var scanPriority: Int {
         switch self {
+        case .browserData: return 10
         case .temporaryFiles: return 50
         case .applicationCaches: return 60
         case .diagnosticReports: return 70
@@ -146,8 +154,8 @@ public struct Cleaner: Sendable {
 
     #if os(macOS)
     public init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let targets: [CleanupTarget] = [
+        let homePath = trimTrailingSlashes(FileManager.default.homeDirectoryForCurrentUser.path)
+        var targets: [CleanupTarget] = [
             CleanupTarget(
                 category: .temporaryFiles,
                 rootPath: Self.userTemporaryDirectory(),
@@ -156,15 +164,16 @@ public struct Cleaner: Sendable {
             ),
             CleanupTarget(
                 category: .applicationCaches,
-                rootPath: home.appendingPathComponent("Library/Caches").path,
+                rootPath: homePath + "/Library/Caches",
                 minimumAgeInDays: CleanupCategory.applicationCaches.minimumAgeInDays
             ),
             CleanupTarget(
                 category: .diagnosticReports,
-                rootPath: home.appendingPathComponent("Library/Logs/DiagnosticReports").path,
+                rootPath: homePath + "/Library/Logs/DiagnosticReports",
                 minimumAgeInDays: CleanupCategory.diagnosticReports.minimumAgeInDays
             ),
         ]
+        targets.append(contentsOf: Self.browserDataTargets(homePath: homePath))
         self.init(targets: targets)
     }
 

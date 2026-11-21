@@ -176,7 +176,7 @@ private struct CleanerView: View {
                         Text("\(itemCount(plan.files.count)) · \(formatBytes(plan.bytes))")
                     }
                     if let plan = model.plan, plan.unreadableLocations > 0 {
-                        Text("Some locations couldn’t be read.")
+                        Text("Some locations couldn’t be read. Grant Full Disk Access in System Settings for protected data such as Safari.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
