@@ -12,6 +12,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
     case diagnosticReports = "Diagnostic reports"
     case browserData = "Browser data"
     case privacyTraces = "Privacy traces"
+    case recentFileLists = "Recent file lists"
 
     public var id: Self { self }
 
@@ -19,7 +20,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .temporaryFiles: return 7
         case .applicationCaches, .diagnosticReports: return 30
-        case .browserData, .privacyTraces: return nil
+        case .browserData, .privacyTraces, .recentFileLists: return nil
         }
     }
 
@@ -34,6 +35,8 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
             return "History, cookies, sessions, caches, and site storage"
         case .privacyTraces:
             return "Download history, QuickLook thumbnails, saved window state, and HTTP cookies"
+        case .recentFileLists:
+            return "Recently opened documents, apps, and servers"
         }
     }
 
@@ -44,6 +47,7 @@ public enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
     var scanPriority: Int {
         switch self {
         case .browserData: return 10
+        case .recentFileLists: return 20
         case .privacyTraces: return 30
         case .temporaryFiles: return 50
         case .applicationCaches: return 60
@@ -182,6 +186,7 @@ public struct Cleaner: Sendable {
             homePath: homePath,
             userCacheDirectory: Self.userCacheDirectory()
         ))
+        targets.append(contentsOf: Self.recentFileListTargets(homePath: homePath))
         self.init(targets: targets)
     }
 
