@@ -66,7 +66,7 @@ public struct Cleaner: Sendable {
         self.init(roots: roots)
     }
 
-    private static func userTemporaryDirectory() -> String? {
+    static func userTemporaryDirectory() -> String? {
         let key = Int32(_CS_DARWIN_USER_TEMP_DIR)
         let length = confstr(key, nil, 0)
         guard length > 0 else { return nil }

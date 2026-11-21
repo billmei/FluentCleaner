@@ -12,8 +12,12 @@ final class CleanerTests: XCTestCase {
     private var cleaner: Cleaner!
 
     override func setUpWithError() throws {
-        workspace = manager.temporaryDirectory.resolvingSymlinksInPath()
-            .appendingPathComponent("FluentCleanerTests-\(UUID().uuidString)")
+        #if os(macOS)
+        let tempDirectory = URL(fileURLWithPath: try XCTUnwrap(Cleaner.userTemporaryDirectory()), isDirectory: true)
+        #else
+        let tempDirectory = manager.temporaryDirectory.resolvingSymlinksInPath()
+        #endif
+        workspace = tempDirectory.appendingPathComponent("FluentCleanerTests-\(UUID().uuidString)")
         temporary = workspace.appendingPathComponent("temporary")
         caches = workspace.appendingPathComponent("caches")
         reports = workspace.appendingPathComponent("reports")
