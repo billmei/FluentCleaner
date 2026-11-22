@@ -76,21 +76,10 @@ public class AppSettings
     public bool CleanHistoryEnabled { get; set; } = true;
     public List<CleanHistoryEntry> CleanHistory { get; set; } = [];
 
-    // Provider used for explanations and Custom Cleaner generation.
-    public string AiProvider { get; set; } = "Groq";
-
-    // Provider keys stay separate so switching providers never overwrites another key.
-    public string? GroqApiKey { get; set; }
-    public string? OpenAiApiKey { get; set; }
-    public string? AnthropicApiKey { get; set; }
-
     // Modern and Classic use separate task names and schedules.
     public string ModernSchedulerFrequency { get; set; } = "Daily";
     public string ModernSchedulerTime { get; set; } = "03:00";
     public bool ModernSchedulerShutdownAfter { get; set; }
-
-    // true once the user dismisses the startup donation tip
-    public bool DonationDismissed { get; set; } = false;
 
     // UI language override; "" = follow Windows, "en-US" / "de-DE" = forced
     public string Language { get; set; } = "";

@@ -137,34 +137,6 @@ public sealed partial class CleanerPage : Page, ISearchablePage, IPageActions
         }
     }
 
-    // Ask Groq to explain the entry;result is cached so repeated opens are instant
-    private async void EntryExplain_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not MenuFlyoutItem { Tag: CleanerEntryViewModel vm }) return;
-
-        var textBlock = new TextBlock
-        {
-            Text = ResourceService.Get("DlgExplainThinking"),
-            TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 400
-        };
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            RequestedTheme = ActualTheme,
-            CornerRadius = new CornerRadius(8),
-            Title = vm.Name,
-            CloseButtonText = ResourceService.Get("DlgExplainClose"),
-            Content = textBlock
-        };
-
-        //let show the dialog immediately (dont await),then fill in the answer
-        var showTask = dialog.ShowAsync().AsTask();
-        textBlock.Text = await AiExplainer.ExplainAsync(vm.Entry);
-        await showTask;
-    }
-
     // Show source;opens the raw ini block in the Rule Lab (inspect + dry-run test)
     private void EntrySource_Click(object sender, RoutedEventArgs e)
     {

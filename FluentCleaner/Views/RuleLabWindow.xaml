@@ -55,11 +55,10 @@
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                      ScrollViewer.HorizontalScrollBarVisibility="Auto" />
 
-            <!-- bottom bar: Copy / Report / Close -->
+            <!-- bottom bar: Copy / Close -->
             <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal"
                         Spacing="8" HorizontalAlignment="Right">
                 <Button x:Name="CopyButton"   Click="Copy_Click" />
-                <Button x:Name="ReportButton" Click="Report_Click" />
                 <Button x:Name="CloseButton"  Click="Close_Click" />
             </StackPanel>
         </Grid>

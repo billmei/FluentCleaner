@@ -52,7 +52,6 @@ public sealed partial class RuleLabWindow : Window
         DryRunButton.Content = ResourceService.Get("DlgSourceDryRun");
         Summary.Text         = ResourceService.Get("DlgSourceHint");
         CopyButton.Content   = ResourceService.Get("DlgSourceCopy");
-        ReportButton.Content = ResourceService.Get("DlgSourceReport");
         CloseButton.Content  = ResourceService.Get("DlgExplainClose");
 
         //WinUI TextBox shows only the first line when the text carries \r\n;normalize to \n
@@ -139,16 +138,9 @@ public sealed partial class RuleLabWindow : Window
     //Copy the current (edited) rules
     private void Copy_Click(object sender, RoutedEventArgs e) => CopyToClipboard(SourceBox.Text);
 
-    //Report: copy then open the issues page ready to paste
-    private async void Report_Click(object sender, RoutedEventArgs e)
-    {
-        CopyToClipboard(SourceBox.Text);
-        await AppLinks.OpenAsync(AppLinks.Issues);
-    }
-
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    // drops text on the clipboard;used by Copy and Report
+    // drops text on the clipboard
     private static void CopyToClipboard(string text)
     {
         var data = new DataPackage();

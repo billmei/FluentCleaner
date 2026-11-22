@@ -171,9 +171,6 @@
                                                             <MenuFlyoutItem x:Uid="MenuCleanEntry"
                                                                                 Tag="{x:Bind}"
                                                                                 Click="EntryClean_Click" />
-                                                            <MenuFlyoutItem x:Uid="MenuExplainEntry"
-                                                                                Tag="{x:Bind}"
-                                                                                Click="EntryExplain_Click" />
                                                             <MenuFlyoutItem x:Uid="MenuShowSource"
                                                                                 Tag="{x:Bind}"
                                                                                 Click="EntrySource_Click" />

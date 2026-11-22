@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
@@ -33,7 +33,7 @@
   <!-- Shared parsing/cleaning logic lives once in FluentCleaner.Core and is compiled
        in from there as linked source, not a ProjectReference. A reference would clash
        on the Services/Models namespaces this app keeps its own copies of (AppSettings,
-       AiExplainer, CleaningService differ by the localized/bound UI bits). -->
+       CleaningService differ by the localized/bound UI bits). -->
   <ItemGroup>
     <Compile Include="..\FluentCleaner.Core\Models\CleanerEntry.cs" Link="Models\CleanerEntry.cs" />
     <Compile Include="..\FluentCleaner.Core\Models\ExcludeKeyEntry.cs" Link="Models\ExcludeKeyEntry.cs" />
@@ -71,6 +71,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="..\Winapp2.ini">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Winappx.ini">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

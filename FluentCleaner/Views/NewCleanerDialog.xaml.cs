@@ -19,15 +19,10 @@ public sealed partial class NewCleanerDialog : ContentDialog
         CloseButtonText         = ResourceService.Get("DlgNewCleanerCancel");
         nameBox.Header          = ResourceService.Get("DlgNewCleanerNameHeader");
         nameBox.PlaceholderText = ResourceService.Get("DlgNewCleanerNamePlaceholder");
-        promptBox.PlaceholderText = ResourceService.Get("DlgNewCleanerAiPlaceholder");
         contentLabel.Text       = ResourceService.Get("DlgNewCleanerContentLabel");
         testBtn.Content         = ResourceService.Get("DlgNewCleanerTest");
 
         Title = existing is null ? ResourceService.Get("DlgNewCleanerTitleNew") : ResourceService.Fmt("DlgNewCleanerTitleEdit", existing.Name);
-
-        // Generation is available when the selected provider has a saved key
-        // or its standard environment variable is present.
-        aiRow.Visibility = AiExplainer.HasConfiguredKey ? Visibility.Visible : Visibility.Collapsed;
 
         if (existing is not null)
         {
@@ -63,20 +58,6 @@ public sealed partial class NewCleanerDialog : ContentDialog
 
     private void TemplateBtn_Click(object sender, RoutedEventArgs e) =>
         contentBox.Text = IsScript ? Ps1Template : IniTemplate;
-
-    private async void GenerateBtn_Click(object sender, RoutedEventArgs e)
-    {
-        var desc = promptBox.Text.Trim();
-        if (string.IsNullOrEmpty(desc)) return;
-
-        generateBtn.IsEnabled = false;
-        generateBtn.Content   = ResourceService.Get("DlgNewCleanerGenerating");
-        contentBox.Text       = IsScript
-            ? await AiExplainer.GenerateScriptAsync(desc)
-            : await AiExplainer.GenerateEntryAsync(desc);
-        generateBtn.IsEnabled = true;
-        generateBtn.Content   = ResourceService.Get("DlgNewCleanerGenerateBtn");
-    }
 
     // --- Templates -------------------------------------------------------
 

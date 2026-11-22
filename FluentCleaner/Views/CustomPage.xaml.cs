@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using FluentCleaner.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -142,21 +142,6 @@ public sealed partial class CustomPage : Page, IPageActions, ISearchablePage
             });
         };
         flyout.Items.Add(openFolder);
-
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
-        void AddLink(string label, string url)
-        {
-            var item = new MenuFlyoutItem { Text = label };
-            item.Click += async (_, _) => await AppLinks.OpenAsync(url);
-            flyout.Items.Add(item);
-        }
-
-        AddLink(ResourceService.Get("St_CustomMenuReddit"),    AppLinks.Reddit);
-        AddLink(ResourceService.Get("St_CustomMenuNeowin"),    AppLinks.Neowin);
-        AddLink(ResourceService.Get("St_CustomMenuDeskmodder"),AppLinks.Deskmodder);
-        flyout.Items.Add(new MenuFlyoutSeparator());
-        AddLink(ResourceService.Get("St_CustomMenuShare"),     AppLinks.ShareCleaner);
     }
 
     // counts [SectionHeaders] in the file as a quick proxy for entry count
