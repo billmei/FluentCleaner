@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Net.Http;
 
 namespace FluentCleaner.ViewModels;
 
@@ -15,10 +14,6 @@ public record LanguageOption(string Code, string Name);
 
 public partial class SettingsPageViewModel : ObservableObject
 {
-    private const string Winapp2Url  = "https://raw.githubusercontent.com/builtbybel/FluentCleaner/master/Winapp2.ini";
-    private const string Winapp3Url  = "https://raw.githubusercontent.com/MoscaDotTo/Winapp2/master/Winapp3/Winapp3.ini";
-    private const string WinappxUrl  = "https://raw.githubusercontent.com/builtbybel/FluentCleaner/master/Winappx.ini";
-
     private static string Winapp2LocalPath  => Path.Combine(AppContext.BaseDirectory, "Winapp2.ini");
     private static string Winapp3LocalPath  => Path.Combine(AppContext.BaseDirectory, "Winapp3.ini");
     private static string WinappxLocalPath  => Path.Combine(AppContext.BaseDirectory, "Winappx.ini");
@@ -29,10 +24,6 @@ public partial class SettingsPageViewModel : ObservableObject
     [ObservableProperty] public partial bool   EnableWinapp2 { get; set; } = true;
     [ObservableProperty] public partial bool   EnableWinapp3 { get; set; }
     [ObservableProperty] public partial bool   EnableWinappx { get; set; } = true;
-    [ObservableProperty] public partial bool   Winapp3Available { get; set; }    // Winapp3.ini exists on disk
-    [ObservableProperty] public partial bool   Winapp3NotAvailable { get; set; } // inverse; drives the Download button
-    [ObservableProperty] public partial bool   WinappxAvailable { get; set; }    // Winappx.ini exists on disk
-    [ObservableProperty] public partial bool   WinappxNotAvailable { get; set; } // inverse; drives the Download button
     [ObservableProperty] public partial bool   IsCustomSource { get; set; }      // custom path row has a saved value
 
     // File-info strings shown below each database row
@@ -58,9 +49,7 @@ public partial class SettingsPageViewModel : ObservableObject
 
     // Shared
     [ObservableProperty] public partial string StatusText { get; set; } = "";
-    [ObservableProperty] public partial bool   IsBusy { get; set; }             // single ring for all downloads
     [ObservableProperty] public partial int    ThemeIndex    { get; set; }
-    [ObservableProperty] public partial bool   RestartRequired { get; set; }
 
     // Language dropdown — populated at runtime from the deployed Strings\{lang}\ folders.
     public ObservableCollection<LanguageOption> Languages { get; } = [];
@@ -136,7 +125,7 @@ public partial class SettingsPageViewModel : ObservableObject
         AppSettings.Instance.EnableWinapp3 = value;
         AppSettings.Instance.Save();
         StatusText = value && !File.Exists(Winapp3LocalPath)
-            ? ResourceService.Get("St_Winapp3NotDownloaded")
+            ? ResourceService.Fmt("St_FileNotFound", Winapp3LocalPath)
             : "";
         RefreshFileInfo();
     }
@@ -147,16 +136,9 @@ public partial class SettingsPageViewModel : ObservableObject
         AppSettings.Instance.EnableWinappx = value;
         AppSettings.Instance.Save();
         StatusText = value && !File.Exists(WinappxLocalPath)
-            ? ResourceService.Get("St_WinappxNotDownloaded")
+            ? ResourceService.Fmt("St_FileNotFound", WinappxLocalPath)
             : "";
         RefreshFileInfo();
-    }
-
-    partial void OnIsBusyChanged(bool value)
-    {
-        DownloadLatestCommand.NotifyCanExecuteChanged();
-        DownloadWinapp3Command.NotifyCanExecuteChanged();
-        DownloadWinappxCommand.NotifyCanExecuteChanged();
     }
 
     // --- Post-clean tasks -----------------------------------------------------
@@ -253,10 +235,6 @@ public partial class SettingsPageViewModel : ObservableObject
         EnableWinapp2       = s.EnableWinapp2;
         EnableWinapp3       = s.EnableWinapp3;
         EnableWinappx       = s.EnableWinappx;
-        Winapp3Available    = File.Exists(Winapp3LocalPath);
-        Winapp3NotAvailable = !Winapp3Available;
-        WinappxAvailable    = File.Exists(WinappxLocalPath);
-        WinappxNotAvailable = !WinappxAvailable;
         CustomPath          = s.CustomWinapp2Path ?? "";
         IsCustomSource      = !string.IsNullOrWhiteSpace(s.CustomWinapp2Path);
         PostCleanEnabled         = s.PostCleanEnabled;
@@ -307,57 +285,6 @@ public partial class SettingsPageViewModel : ObservableObject
         RefreshFileInfo();
     }
 
-    // --- Downloads ------------------------------------------------------------
-
-    [RelayCommand(CanExecute = nameof(CanDownload))]
-    private async Task DownloadLatestAsync()
-    {
-        if (await DownloadFileAsync(Winapp2Url, Winapp2LocalPath, "Winapp2"))
-            Refresh();
-    }
-
-    [RelayCommand(CanExecute = nameof(CanDownload))]
-    private async Task DownloadWinapp3Async()
-    {
-        if (await DownloadFileAsync(Winapp3Url, Winapp3LocalPath, "Winapp3"))
-        {
-            AppSettings.Instance.EnableWinapp3 = true;
-            AppSettings.Instance.Save();
-            Refresh();
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanDownload))]
-    private async Task DownloadWinappxAsync()
-    {
-        if (await DownloadFileAsync(WinappxUrl, WinappxLocalPath, "Winappx"))
-        {
-            AppSettings.Instance.EnableWinappx = true;
-            AppSettings.Instance.Save();
-            Refresh();
-        }
-    }
-
-    private bool CanDownload() => !IsBusy;
-
-    // Returns true on success, false on failure (error already written to StatusText).
-    private async Task<bool> DownloadFileAsync(string url, string destination, string label)
-    {
-        IsBusy = true;
-        StatusText = ResourceService.Fmt("St_Downloading", label);
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            var content = await http.GetStringAsync(url);
-            await File.WriteAllTextAsync(destination, content);
-            StatusText      = ResourceService.Fmt("St_Downloaded", label, content.Length / 1024);
-            RestartRequired = true;
-            return true;
-        }
-        catch (Exception ex) { StatusText = ResourceService.Fmt("St_DownloadFailed", ex.Message); return false; }
-        finally              { IsBusy = false; }
-    }
-
     // --- File info helpers ----------------------------------------------------
 
     private void RefreshFileInfo()
@@ -371,7 +298,7 @@ public partial class SettingsPageViewModel : ObservableObject
     {
         try
         {
-            if (!File.Exists(path)) return ResourceService.Get("St_FileInfoNotDownloaded");
+            if (!File.Exists(path)) return ResourceService.Fmt("St_FileNotFound", Path.GetFileName(path));
             var fi    = new FileInfo(path);
             var lines = File.ReadLines(path).Count(l => l.StartsWith('[') && !l.StartsWith("[Winapp2"));
             return ResourceService.Fmt("St_FileInfo", lines, fi.Length / 1024, fi.LastWriteTime.ToString("yyyy-MM-dd"));

@@ -16,17 +16,6 @@
         <!-- Name -->
         <TextBox x:Name="nameBox" Margin="0,0,0,4" />
 
-        <!-- AI generate row (hidden when no API key is configured) -->
-        <Grid x:Name="aiRow" Margin="0,0,0,4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox x:Name="promptBox"
-                     Margin="0,0,6,0" />
-            <Button x:Name="generateBtn" x:Uid="DlgNewCleanerGenerate" Grid.Column="1" Click="GenerateBtn_Click" />
-        </Grid>
-
         <!-- Content header: label left, Load template right -->
         <Grid>
             <Grid.ColumnDefinitions>
